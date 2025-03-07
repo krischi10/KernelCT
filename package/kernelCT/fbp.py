@@ -2,7 +2,6 @@ import numpy as np
 from scipy.interpolate import CubicSpline
 
 
-
 def FourierLP(filter, fWidth, width):
     """
     

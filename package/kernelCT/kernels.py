@@ -1,25 +1,29 @@
 import numpy as np
 
 
-
 class WeightedKernel():
     """
-    
+    A class to represent a weighted kernel.    
     """
     
-    def __init__(self, type, nuS = None, nuW = None):
+    def __init__(self, type, nu_s = 1, nu_w = 1):
         """
+        Initialize a kernel object.
         
+        Parameters:
+            type (str): The type of the kernel. Currently supports 'Gaussian' as the only option.
+            nu_s (float, optional): The shape parameter for the Gaussian kernel. Default is None.
+            nu_w (float, optional): The weight parameter for the Gaussian kernel. Default is None.
         """
 
-        self.type = type    # kernel type
+        self.type = type
 
         if self.type == 'Gaussian':
-            self.nuS = nuS      # shape parameter
-            self.nuW = nuW      # weight parameter
+            self.nu_w = nu_s
+            self.nu_w = nu_w
 
 
-    def evalRepresenter(self, X, Y, r, a):
+    def eval_representers(self, X, Y, r, a):
         """
         
         """

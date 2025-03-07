@@ -1,7 +1,6 @@
 import numpy as np
 
 
-
 def evalDist(greedyMethod, kernel, r, a, rC, aC, s = None):
     """
     
