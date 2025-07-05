@@ -66,7 +66,9 @@ def low_pass_filter(
         case 'ram_lak':
             conv_filter = (L**2 / (2 * np.pi)) * (2 * np.sinc(t) - np.sinc(t / 2)**2)
         case 'shepp_logan':
-            conv_filter = 4 * L**2 / (np.pi**3 * (1 - 4 * t**2))
+            denominator = 1 - 4 * t**2
+            denominator[denominator == 0] = np.finfo(float).eps
+            conv_filter = 4 * L**2 / (np.pi**3 * denominator)
         case _:
             raise ValueError("Unknown filter type. Use 'ram_lak' or 'shepp_logan'.")
 

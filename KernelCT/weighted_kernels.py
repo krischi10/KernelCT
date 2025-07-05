@@ -1,9 +1,9 @@
 import numpy as np
 
 
-class WeightedKernel():
+class WeightedGaussian():
     """
-    A class to represent a weighted kernel.    
+    A class to represent a weighted Gaussian kernel.
     """
     
     def __init__(self, type, nu_s = 1, nu_w = 1):
