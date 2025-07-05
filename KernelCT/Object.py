@@ -18,6 +18,25 @@ class Object:
         Initialize the Object class with Radon transform parameters
         """
         
+        # Input validation
+        if not isinstance(r, np.ndarray):
+            raise TypeError("r must be a numpy array")
+        if not isinstance(a, np.ndarray):
+            raise TypeError("a must be a numpy array")
+        if not isinstance(Radon, np.ndarray):
+            raise TypeError("Radon must be a numpy array")
+        if not isinstance(ind, list):
+            raise TypeError("ind must be a list of indices")
+        # check if ind is list of integers
+        if not all(isinstance(i, int) for i in ind):
+            raise TypeError("ind must be a list of integers")
+
+        if r.shape != a.shape:
+            raise ValueError("r and a must have the same shape")
+        if r.size == 0 or a.size == 0 or Radon.size == 0:
+            raise ValueError("r, a, and Radon cannot be empty arrays")
+
+        # Assign parameters
         self.r = r
         self.a = a
         self.Radon = Radon
@@ -36,6 +55,26 @@ class Object:
         Perform filtered back projection reconstruction using the Radon transform data.
         """
 
+        # Input validation
+        if self.r.size == 0 or self.a.size == 0 or self.Radon.size == 0:
+            raise ValueError("Some of the input arrays are empty.")
+        if X.shape != Y.shape:
+            raise ValueError("X and Y must have the same shape.")
+        if eval_radius <= 0:
+            raise ValueError("eval_radius must be positive.")
+
+        # check filter type
+        if filter_type not in ['ram_lak', 'shepp_logan']:
+            raise ValueError("filter_type must be one of: 'ram_lak', 'shepp_logan'")
+
+        # check spline type
+        if spline_type not in ['linear', 'cubic']:
+            raise ValueError("spline_type must be one of: 'linear', 'cubic'")
+
+        # verify that r and a are 2D arrays
+        if self.r.ndim != 2 or self.a.ndim != 2:
+            raise ValueError("r and a must be 2D arrays")
+
         # compute parameters via optimal sampling equalities
         r_max = np.max(np.abs(self.r))
         L = self.a.shape[0] / r_max
@@ -44,8 +83,8 @@ class Object:
         spline_data_length = int(np.ceil(eval_radius / d))
 
         # setup data for spline interpolation
-        x_eval = np.cos(self.a[:, [0]]) * self.X.reshape((1, self.X.size)) \
-                + np.sin(self.a[:, [0]]) * self.Y.reshape((1, self.Y.size))
+        x_eval = np.cos(self.a[:, [0]]) * X.reshape((1, X.size)) \
+                + np.sin(self.a[:, [0]]) * Y.reshape((1, Y.size))
         x_data = d * np.arange(-spline_data_length, spline_data_length + 1)
 
         # compute low pass filtering
@@ -58,7 +97,7 @@ class Object:
         
         # spline interpolation + back projection
         reconstruction = fbp.back_projection(
-            fbp.row_splines(x_eval, x_data, filtered_data, spline_type)
+            fbp.row_wise_splines(x_eval, x_data, filtered_data, spline_type)
         )
 
         return np.reshape(reconstruction, X.shape)

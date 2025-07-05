@@ -7,7 +7,6 @@ interpolation, and back projection operations commonly used in CT reconstruction
 
 import numpy as np
 from scipy.interpolate import CubicSpline
-from scipy.signal import convolve2d
 
 
 def low_pass_filter(
@@ -72,7 +71,12 @@ def low_pass_filter(
         case _:
             raise ValueError("Unknown filter type. Use 'ram_lak' or 'shepp_logan'.")
 
-    return convolve2d(radon_vals, conv_filter[np.newaxis, :], mode='valid')
+    convolution = np.zeros((radon_vals.shape[0], np.size(conv_filter) - radon_vals.shape[1] + 1))
+
+    for i in range(np.shape(radon_vals)[0]):
+        convolution[i,:] = np.convolve(conv_filter, radon_vals[i, :], mode = 'valid')
+
+    return convolution
 
 
 def row_wise_splines(
