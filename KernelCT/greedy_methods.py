@@ -66,6 +66,7 @@ def geometric_greedy(
     if greedy_method == 'geo_sphere' and not isinstance(s, (float, int)):
         raise TypeError("s must be a float or int.")
 
+
     match greedy_method:
         case 'geo_dual_space':
             dist_new = (kernel.norm_radon_functional(r) 
@@ -85,14 +86,14 @@ def geometric_greedy(
         case 'geo_sphere':
             inner_product = np.clip(
                 ((1 / np.sqrt(1 + r**2 * s**2)) * (1 / np.sqrt(1 + r_center**2 * s**2))
-                 * (np.cos(a - a_center) + r * r_center * s**2)),
+                * (np.cos(a - a_center) + r * r_center * s**2)),
                 -1,
                 1
             )  # avoid leaving the domain of arccos via truncation
             dist_new = np.minimum(np.arccos(inner_product), np.arccos(-inner_product))
         case _:
             raise ValueError("greedy_method must be one of: 'geo_dual_space', "
-                           "'geo_parameter_space', 'geo_periodic', 'geo_sphere'.")
+                             "'geo_parameter_space', 'geo_periodic', 'geo_sphere'.")
 
     dist = np.minimum(dist, dist_new)
     index = np.argmax(dist)
@@ -135,8 +136,8 @@ def beta_greedy(
         raise TypeError("pwr_func_vals must be a numpy array.")
     if not isinstance(res, np.ndarray):
         raise TypeError("res must be a numpy array.")
-    if not isinstance(beta, (float, int, str)):
-        raise TypeError("beta must be a float, int, or 'inf'.")
+    if not isinstance(beta, (float, str)):
+        raise TypeError("beta must be a float or 'inf'.")
     if isinstance(beta, (float, int)) and beta < 0:
         raise ValueError("beta must be non-negative or 'inf'.")
 
