@@ -1,18 +1,25 @@
 import numpy as np
 from scipy.linalg import solve, solve_triangular
+from scipy.sparse.linalg import lsmr
 from .object import Object
 from .weighted_kernels import WeightedGaussian
 
-class KernelInterpolant:
 
+class KernelReconstructor:
+    """
+    Base class for kernel-based reconstruction methods.
+    
+    Provides common functionality for kernel-based reconstruction including
+    coefficient storage and prediction methods.
+    """
     def __init__(self, coefficients: np.ndarray | None = None) -> None:
         """
-        Initialize the KernelInterpolant with optional coefficients.
+        Initialize the KernelReconstructor with optional coefficients.
         
         Parameters
         ----------
         coefficients : np.ndarray or None, default None
-            Coefficients for the kernel interpolant in terms of standard basis.
+            Coefficients for the kernel reconstructor.
             
         Raises
         ------
@@ -32,79 +39,11 @@ class KernelInterpolant:
         self.coefficients = coefficients
 
 
-    def fit(self, obj: Object, kernel: WeightedGaussian, basis: str = 'standard',
-            c_newton: np.ndarray | None = None, V_newton: np.ndarray | None = None) -> None:
-        """
-        Fit the kernel interpolant to the selected data points.
-        
-        Parameters
-        ----------
-        obj : Object
-            Object containing the data and selected indices
-        kernel : WeightedGaussian
-            Kernel instance for interpolation
-        basis : str, default 'standard'
-            Basis type for fitting ('standard' or 'newton')
-        c_newton : np.ndarray or None, optional
-            Coefficients of interpolant in terms of Newton basis (required for 'newton' basis)
-        V_newton : np.ndarray or None, optional
-            Newton basis Vandermonde matrix (required for 'newton' basis)
-            
-        Raises
-        ------
-        TypeError
-            If inputs are not of correct type
-        ValueError
-            If Object has no indices selected, basis is invalid, or required
-            parameters are missing for Newton basis
-        """
-        
-        # Input validation
-        if not isinstance(obj, Object):
-            raise TypeError("obj must be an instance of Object")
-        if not isinstance(kernel, WeightedGaussian):
-            raise TypeError("kernel must be an instance of WeightedGaussian")
-        if not isinstance(basis, str):
-            raise TypeError("basis must be a string")
-        
-        if len(obj.ind) == 0:
-            raise ValueError("Object has no indices selected for fitting.")
-        
-        # Validate Newton basis requirements
-        if basis == 'newton':
-            if c_newton is None or V_newton is None:
-                raise ValueError("c_newton and V_newton must be provided for 'newton' basis")
-            if not isinstance(c_newton, np.ndarray):
-                raise TypeError("c_newton must be a numpy array")
-            if not isinstance(V_newton, np.ndarray):
-                raise TypeError("V_newton must be a numpy array")
-            if c_newton.size == 0:
-                raise ValueError("c_newton cannot be empty")
-            if V_newton.size == 0:
-                raise ValueError("V_newton cannot be empty")
-            if len(obj.ind) != V_newton.shape[1]:
-                raise ValueError("V_newton must have exactly as many rows as selected indices")
-            if c_newton.size != V_newton.shape[1]:
-                raise ValueError("c_newton size must match V_newton columns")
-
-        # Fit the interpolant based on the specified basis
-        match basis:
-            case 'standard':
-                self.coefficients = solve(kernel.gram_matrix(
-                        obj.r[obj.ind][:, np.newaxis],
-                        obj.a[obj.ind][:, np.newaxis],
-                        obj.r[obj.ind][np.newaxis, :],
-                        obj.a[obj.ind][np.newaxis, :]),
-                    obj.Radon[obj.ind][:, np.newaxis],
-                    assume_a = 'pos')
-            case 'newton':
-                self.coefficients = solve_triangular(V_newton[obj.ind, :].T, c_newton)
-            case _:
-                raise ValueError(f"Unknown basis '{basis}' specified. Must be 'standard' or 'newton'.")
-
-
-    def predict(self, obj: Object, X: np.ndarray, Y: np.ndarray, kernel: WeightedGaussian,
-                prev_eval_repr: np.ndarray | None = None) -> tuple[np.ndarray, np.ndarray]:
+    def predict(
+        self, obj: Object, X: np.ndarray, Y: np.ndarray, 
+        kernel: WeightedGaussian,
+        prev_eval_repr: np.ndarray | None = None
+    ) -> tuple[np.ndarray, np.ndarray]:
         """
         Predict using the fitted kernel interpolant.
         
@@ -143,12 +82,20 @@ class KernelInterpolant:
         if not isinstance(Y, np.ndarray):
             raise TypeError("Y must be a numpy array")
         if not isinstance(kernel, WeightedGaussian):
-            raise TypeError("kernel must be an instance of WeightedGaussian")
-        if prev_eval_repr is not None and not isinstance(prev_eval_repr, np.ndarray):
-            raise TypeError("prev_eval_repr must be a numpy array or None")
+            raise TypeError(
+                "kernel must be an instance of WeightedGaussian"
+            )
+        if (prev_eval_repr is not None and 
+            not isinstance(prev_eval_repr, np.ndarray)):
+            raise TypeError(
+                "prev_eval_repr must be a numpy array or None"
+            )
         
         if self.coefficients is None:
-            raise ValueError("KernelInterpolant has not been fitted yet. Call fit() first.")
+            raise ValueError(
+                "KernelReconstructor has not been fitted yet. "
+                "Call fit() first."
+            )
         
         if X.shape != Y.shape:
             raise ValueError("X and Y must have the same shape")
@@ -161,8 +108,10 @@ class KernelInterpolant:
         # Validate prev_eval_repr if provided
         if prev_eval_repr is not None:
             if prev_eval_repr.shape[0] != X.size:
-                raise ValueError("prev_eval_repr first dimension must match X.size")
-        
+                raise ValueError(
+                    "prev_eval_repr first dimension must match X.size"
+                )
+    
 
         if prev_eval_repr is None:
             start_index = 0
@@ -183,119 +132,259 @@ class KernelInterpolant:
                 eval_repr = update
             else:
                 eval_repr = np.hstack((prev_eval_repr, update))
+        else:
+            eval_repr = prev_eval_repr
 
         reconstruction = eval_repr @ self.coefficients
 
         return np.reshape(reconstruction, X.shape), eval_repr
 
 
-class KernelRegressor:
-
-    def __init__(self, coefficients: np.ndarray | None = None) -> None:
-        self.coefficients = coefficients
-
-
-    def fit(self, X: np.ndarray, Y: np.ndarray, Radon: np.ndarray) -> None:
+class KernelInterpolant(KernelReconstructor):
+    """
+    Kernel interpolation for CT reconstruction.
+    
+    Performs exact interpolation of selected Radon transform data using
+    kernel methods with standard or Newton basis.
+    """
+    def fit(
+        self, obj: Object, kernel: WeightedGaussian, 
+        basis: str = 'standard',
+        c_newton: np.ndarray | None = None, 
+        V_newton: np.ndarray | None = None
+    ) -> None:
         """
-        """
-
-
-    def predict(self, X: np.ndarray, Y: np.ndarray) -> np.ndarray:
-        """
-        """
-
-
-def reconstructKernel(self, kernel, method, gamma = None, cNewton = None,
-                          V = None, returnC = False, prev_eval_repr = None):
-        """
+        Fit the kernel interpolant to the selected data points.
         
-        """
-        
-        N = len(self.ind)
-
-        # Set gamma if necessary
-        if gamma is None:
-                gamma = 0
-
-        if method == 'stdIntpol':
-            if N == 0:
-                self.ind = range(self.r.size)
-                N = len(self.ind)
+        Parameters
+        ----------
+        obj : Object
+            Object containing the data and selected indices
+        kernel : WeightedGaussian
+            Kernel instance for interpolation
+        basis : str, default 'standard'
+            Basis type for fitting ('standard' or 'newton')
+        c_newton : np.ndarray or None, optional
+            Coefficients of interpolant in terms of Newton basis 
+            (required for 'newton' basis)
+        V_newton : np.ndarray or None, optional
+            Newton basis Vandermonde matrix 
+            (required for 'newton' basis)
             
-            # Solve standard interpolation system
-            cStd = solve(kernel.GramMatrix(
-                        self.r[self.ind].reshape((N, 1)),
-                        self.a[self.ind].reshape((N, 1)),
-                        self.r[self.ind].reshape((1, N)),
-                        self.a[self.ind].reshape((1, N))) \
-                        + gamma * N * np.identity(N),
-                    self.Radon[self.ind].reshape((N, 1)),
-                    assume_a = 'pos')
+        Raises
+        ------
+        TypeError
+            If inputs are not of correct type
+        ValueError
+            If Object has no indices selected, basis is invalid, or required
+            parameters are missing for Newton basis
+        """
+        
+        # Input validation
+        if not isinstance(obj, Object):
+            raise TypeError("obj must be an instance of Object")
+        if not isinstance(kernel, WeightedGaussian):
+            raise TypeError(
+                "kernel must be an instance of WeightedGaussian"
+            )
+        if not isinstance(basis, str):
+            raise TypeError("basis must be a string")
+    
+        if len(obj.ind) == 0:
+            raise ValueError("Object has no indices selected for fitting.")
+        
+        # Validate Newton basis requirements
+        if basis == 'newton':
+            if c_newton is None or V_newton is None:
+                raise ValueError(
+                    "c_newton and V_newton must be provided for "
+                    "'newton' basis"
+                )
+            if not isinstance(c_newton, np.ndarray):
+                raise TypeError("c_newton must be a numpy array")
+            if not isinstance(V_newton, np.ndarray):
+                raise TypeError("V_newton must be a numpy array")
+            if c_newton.size == 0:
+                raise ValueError("c_newton cannot be empty")
+            if V_newton.size == 0:
+                raise ValueError("V_newton cannot be empty")
+            if len(obj.ind) != V_newton.shape[1]:
+                raise ValueError(
+                    "V_newton must have exactly as many rows as "
+                    "selected indices"
+                )
+            if c_newton.size != V_newton.shape[1]:
+                raise ValueError(
+                    "c_newton size must match V_newton columns"
+                )
+
+        # Fit the interpolant based on the specified basis
+        match basis:
+            case 'standard':
+                self.coefficients = solve(
+                    kernel.gram_matrix(
+                        obj.r[obj.ind][:, np.newaxis],
+                        obj.a[obj.ind][:, np.newaxis],
+                        obj.r[obj.ind][np.newaxis, :],
+                        obj.a[obj.ind][np.newaxis, :]
+                    ),
+                    obj.Radon[obj.ind][:, np.newaxis],
+                    assume_a='pos'
+                )
+            case 'newton':
+                self.coefficients = solve_triangular(
+                    V_newton[obj.ind, :].T, c_newton
+                )
+            case _:
+                raise ValueError(
+                    f"Unknown basis '{basis}' specified. "
+                    "Must be 'standard' or 'newton'."
+                )
+
+
+class KernelRegressor(KernelReconstructor):
+    """
+    Kernel regression for CT reconstruction with regularization.
+    
+    Performs regularized reconstruction of Radon transform data using
+    total variation or norm-based regularization methods.
+    """
+    def fit(
+        self, obj: Object, kernel: WeightedGaussian, 
+        regularization: str, gamma: float = 0.0, 
+        X_diff: np.ndarray | None = None, 
+        Y_diff: np.ndarray | None = None, 
+        V_newton: np.ndarray | None = None
+    ) -> None:
+        """
+        Fit the kernel regressor with regularization to the Radon transform data.
+        
+        Parameters
+        ----------
+        obj : Object
+            Object containing the Radon transform data and selected indices
+        kernel : WeightedGaussian
+            Kernel instance for regression
+        regularization : str
+            Regularization method ('tv' for total variation, 
+            'norm' for norm-based)
+        gamma : float, default 0.0
+            Regularization parameter
+        X_diff : np.ndarray or None, optional
+            X coordinates for gradient evaluation 
+            (required for 'tv' regularization)
+        Y_diff : np.ndarray or None, optional
+            Y coordinates for gradient evaluation 
+            (required for 'tv' regularization)
+        V_newton : np.ndarray or None, optional
+            Newton basis matrix (required for 'norm' regularization)
             
-        elif method in ['NewtonIntpol', 'NewtonRegression']:
-            if method == 'NewtonRegression':
-                # Regularized least squares solution
-                cNewton = lsmr(V, self.Radon, damp = np.sqrt(N * gamma))[0]
+        Raises
+        ------
+        ValueError
+            If unknown regularization method is specified or required 
+            parameters are missing for the chosen regularization method
+        """
 
-            # Transformation from Newton to standard basis 
-            cStd = solve_triangular(V[self.ind, :].T, cNewton)
-
-        elif method == 'TVRegularization':
-
-            # Set up normal equations
-            A = kernel.GramMatrix(
-                self.r[self.ind].reshape((N, 1)),
-                self.a[self.ind].reshape((N, 1)),
-                self.r[self.ind].reshape((1, N)),
-                self.a[self.ind].reshape((1, N))
+        # Input validation
+        if not isinstance(obj, Object):
+            raise TypeError("obj must be an instance of Object")
+        if not isinstance(kernel, WeightedGaussian):
+            raise TypeError(
+                "kernel must be an instance of WeightedGaussian"
+            )
+        if not isinstance(regularization, str):
+            raise TypeError("regularization must be a string")
+        if not isinstance(gamma, (int, float)):
+            raise TypeError("gamma must be a number")
+        if gamma < 0:
+            raise ValueError("gamma must be non-negative")
+        
+        if len(obj.ind) == 0:
+            raise ValueError(
+                "Object has no indices selected for fitting"
             )
         
-            Bx = kernel.diffXRepresenter(
-                self.X.reshape((self.X.size, 1)),
-                self.Y.reshape((self.Y.size, 1)),
-                self.r[self.ind].reshape((1, N)),
-                self.a[self.ind].reshape((1, N))
-            )
-
-            By = kernel.diffYRepresenter(
-                self.X.reshape((self.X.size, 1)),
-                self.Y.reshape((self.Y.size, 1)),
-                self.r[self.ind].reshape((1, N)),
-                self.a[self.ind].reshape((1, N))
-            )
-
-            # Solve normal equations
-            cStd = solve(
-                A.T@A + gamma * N * (Bx.T@Bx + By.T@By),
-                A.T@self.Radon[self.ind].reshape((N, 1)),
-                assume_a = 'pos'
-            )
-
-
-        # Construct interpolant via Riesz representers
-        if evalROld is None:
-            indStart = 0
-        else:
-            indStart = evalROld.shape[1]
+        # Validate TV regularization requirements
+        if regularization == 'tv':
+            if X_diff is None or Y_diff is None:
+                raise ValueError(
+                    "X_diff and Y_diff must be provided for "
+                    "'tv' regularization"
+                )
+            if not isinstance(X_diff, np.ndarray):
+                raise TypeError("X_diff must be a numpy array")
+            if not isinstance(Y_diff, np.ndarray):
+                raise TypeError("Y_diff must be a numpy array")
+            if X_diff.shape != Y_diff.shape:
+                raise ValueError(
+                    "X_diff and Y_diff must have the same shape"
+                )
+            if X_diff.size == 0 or Y_diff.size == 0:
+                raise ValueError(
+                    "X_diff and Y_diff cannot be empty"
+                )
         
-        if indStart < N:
-            indR = self.ind[indStart:N]
+        # Validate norm regularization requirements
+        if regularization == 'norm':
+            if V_newton is None:
+                raise ValueError(
+                    "V_newton must be provided for 'norm' regularization"
+                )
+            if not isinstance(V_newton, np.ndarray):
+                raise TypeError("V_newton must be a numpy array")
+            if V_newton.size == 0:
+                raise ValueError("V_newton cannot be empty")
+            if V_newton.shape[1] != len(obj.ind):
+                raise ValueError(
+                    "V_newton must have exactly as many columns as "
+                    "selected indices"
+                )
 
-            update = kernel.evalRepresenter(
-                self.X.reshape((self.X.size, 1)),
-                self.Y.reshape((self.Y.size, 1)),
-                self.r[indR].reshape((1, len(indR))),
-                self.a[indR].reshape((1, len(indR)))
-            )
+        match regularization:
+            case 'tv':
+                # Set up normal equations
+                A = kernel.gram_matrix(
+                    obj.r[:, np.newaxis],
+                    obj.a[:, np.newaxis],
+                    obj.r[obj.ind][np.newaxis, :],
+                    obj.a[obj.ind][np.newaxis, :]
+                )
+            
+                diff_x = kernel.diff_x_representer(
+                    X_diff.reshape((X_diff.size, 1)),
+                    Y_diff.reshape((Y_diff.size, 1)),
+                    obj.r[obj.ind][np.newaxis, :],
+                    obj.a[obj.ind][np.newaxis, :]
+                )
 
-            if evalROld is None:
-                evalROld = update
-            else:
-                evalROld = np.hstack((evalROld, update))
+                diff_y = kernel.diff_y_representer(
+                    X_diff.reshape((X_diff.size, 1)),
+                    Y_diff.reshape((Y_diff.size, 1)),
+                    obj.r[obj.ind][np.newaxis, :],
+                    obj.a[obj.ind][np.newaxis, :]
+                )
 
-        reconstruction = evalROld @ cStd
+                # Solve normal equations
+                self.coefficients = solve(
+                    A.T@A + gamma * obj.Radon.size * (
+                        diff_x.T@diff_x + diff_y.T@diff_y
+                    ),
+                    A.T@obj.Radon[:, np.newaxis],
+                    assume_a='pos'
+                )
 
-        # Check if coefficients should be returned
-        if returnC:
-            return np.reshape(reconstruction, self.X.shape), cStd, evalROld
-        return np.reshape(reconstruction, self.X.shape)
+            case 'norm':
+                c_reg_newton = lsmr(
+                    V_newton, obj.Radon, 
+                    damp=np.sqrt(obj.Radon.size * gamma)
+                )[0]
+                self.coefficients = solve_triangular(
+                    V_newton[obj.ind, :].T, c_reg_newton
+                )
+
+            case _:
+                raise ValueError(
+                    f"Unknown regularization method '{regularization}'. "
+                    "Must be 'tv' or 'norm'."
+                )
