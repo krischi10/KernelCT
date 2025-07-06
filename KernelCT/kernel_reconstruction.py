@@ -1,7 +1,7 @@
 import numpy as np
 from scipy.linalg import solve, solve_triangular
 from scipy.sparse.linalg import lsmr
-from .object import Object
+from .Object import Object
 from .weighted_kernels import WeightedGaussian
 
 
