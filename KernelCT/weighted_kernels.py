@@ -209,7 +209,7 @@ class WeightedGaussian:
         
         Parameters
         ----------
-        r : np.ndarray
+        r : np.ndarray or float
             Radial coordinates in Radon space
             
         Returns
@@ -223,8 +223,8 @@ class WeightedGaussian:
             If r is not a numpy array
         """
 
-        if not isinstance(r, np.ndarray):
-            raise TypeError("r must be a numpy array.")
+        if not isinstance(r, (np.ndarray, float)):
+            raise TypeError("r must be a numpy array or float.")
 
         norm = ((np.pi / np.sqrt(self.nu_weight * (2 * self.nu_kernel + self.nu_weight)))
                 * np.exp(-2 * self.nu_weight * r**2))

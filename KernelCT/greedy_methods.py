@@ -7,7 +7,7 @@ approaches for optimal sampling point selection.
 """
 
 import numpy as np
-from weighted_kernels import WeightedGaussian
+from .weighted_kernels import WeightedGaussian
 
 
 def geometric_greedy(
@@ -46,6 +46,16 @@ def geometric_greedy(
     -------
     tuple[np.ndarray, int]
         Updated distance array and selected index
+        
+    Raises
+    ------
+    TypeError
+        If dist, r, or a are not numpy arrays, if greedy_method is not a string,
+        if r_center or a_center are not numeric, if kernel is not WeightedGaussian
+        when required, or if s is not numeric for geo_sphere method
+    ValueError
+        If greedy_method is not a recognized method name, or if s is not positive
+        for geo_sphere method
     """
 
     # Input validation
@@ -63,9 +73,11 @@ def geometric_greedy(
         raise TypeError("a_center must be a float or int.")
     if greedy_method == 'geo_dual_space' and not isinstance(kernel, WeightedGaussian):
         raise TypeError("kernel must be an instance of WeightedGaussian.")
-    if greedy_method == 'geo_sphere' and not isinstance(s, (float, int)):
-        raise TypeError("s must be a float or int.")
-
+    if greedy_method == 'geo_sphere':
+        if not isinstance(s, (float, int)):
+            raise TypeError("s must be a float or int.")
+        if s <= 0:
+            raise ValueError("Scale parameter s must be positive for geo_sphere method.")
 
     match greedy_method:
         case 'geo_dual_space':
